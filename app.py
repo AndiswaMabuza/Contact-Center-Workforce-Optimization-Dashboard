@@ -443,7 +443,7 @@ else:
     st.success(f"**Occupancy Stability:** Occupancy is within a healthy range ({avg_occupancy:.2f}%). Continue to balance productivity with agent well-being.")
 
 st.markdown("#### 3. Shrinkage Patterns")
-if total_shrinkage_hours > 0 and top_shrinkage_type != "N/A":
+if top_shrinkage_hours > 0 and top_shrinkage_type != "N/A":
     st.info(f"The most significant shrinkage category identified is **'{top_shrinkage_type}'**, accounting for **{top_shrinkage_hours:.2f} hours** during the period. Analyze the root causes for high shrinkage in this category. For example, if 'Personal Time' is high, review policies or provide clearer guidelines. If 'System Issue' is high, escalate to IT for resolution.")
 else:
     st.success("No significant shrinkage patterns were identified, which is positive.")
