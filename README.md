@@ -1,9 +1,9 @@
 # Contact Center Workforce Optimization Dashboard
 
 ## Created By
-###Andiswa Mabuza
-###LinkedIn: https://linkedin.com/in/andiswamabuza
-###email: amabuza53@gmail.com
+### Andiswa Mabuza
+### LinkedIn: https://linkedin.com/in/andiswamabuza
+### email: amabuza53@gmail.com
 
 ## Overview
 
