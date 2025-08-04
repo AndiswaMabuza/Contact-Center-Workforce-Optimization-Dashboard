@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import datetime # For date calculations if needed for filters
+import datetime
 
 # --- Configuration ---
 st.set_page_config(
@@ -18,7 +18,7 @@ st.set_page_config(
 def load_data(file_path):
     df = pd.read_csv(file_path)
     # Ensure datetime columns are correctly parsed after loading from CSV
-    df['Date'] = pd.to_datetime(df['Date']).dt.date # Store as date object for filtering
+    df['Date'] = pd.to_datetime(df['Date']).dt.date
     df['ScheduledShiftStart'] = pd.to_datetime(df['ScheduledShiftStart'])
     df['ScheduledShiftEnd'] = pd.to_datetime(df['ScheduledShiftEnd'])
     df['ActualLogin'] = pd.to_datetime(df['ActualLogin'])
@@ -27,7 +27,7 @@ def load_data(file_path):
     df['EventEndTime'] = pd.to_datetime(df['EventEndTime'])
     return df
 
-df = load_data('agent_performance_data.csv.gz')
+df = load_data('agent_performance_data.csv')
 
 # --- Sidebar Filters ---
 st.sidebar.header("Filter Data")
@@ -35,11 +35,28 @@ st.sidebar.header("Filter Data")
 min_date = df['Date'].min()
 max_date = df['Date'].max()
 
-# Default date range should be within the actual data range
-# Also ensure type consistency: if min_date/max_date are date objects, make sure date_input returns date objects
+# --- NEW: Quick Date Filter Selectbox ---
+quick_filter_options = ["All Time", "Last 7 Days", "Last 30 Days", "Last 90 Days"]
+quick_filter = st.sidebar.selectbox("Quick Filter", options=quick_filter_options)
+
+# Calculate start and end dates based on the quick filter selection
+if quick_filter == "Last 7 Days":
+    start_date_for_picker = max_date - datetime.timedelta(days=6)
+    end_date_for_picker = max_date
+elif quick_filter == "Last 30 Days":
+    start_date_for_picker = max_date - datetime.timedelta(days=29)
+    end_date_for_picker = max_date
+elif quick_filter == "Last 90 Days":
+    start_date_for_picker = max_date - datetime.timedelta(days=89)
+    end_date_for_picker = max_date
+else: # "All Time"
+    start_date_for_picker = min_date
+    end_date_for_picker = max_date
+
+# --- Manual Date Range Override ---
 date_range = st.sidebar.date_input(
-    "Select Date Range",
-    value=(min_date, max_date), # Default to the full range of data
+    "Custom Date Range",
+    value=(start_date_for_picker, end_date_for_picker), # Default to the quick filter's range
     min_value=min_date,
     max_value=max_date
 )
@@ -47,41 +64,50 @@ date_range = st.sidebar.date_input(
 # Initialize filtered_df here with a default
 filtered_df = df.copy()
 
+# Apply the date filter based on the manual date picker
 if len(date_range) == 2:
     start_date_filter = date_range[0]
     end_date_filter = date_range[1]
     filtered_df = filtered_df[(filtered_df['Date'] >= start_date_filter) & (filtered_df['Date'] <= end_date_filter)].copy()
 else:
-    # If only one date is selected, or selection is incomplete, use full date range but warn
-    st.sidebar.warning("Please select both a start and end date for the filter. Displaying full date range.")
-    filtered_df = df.copy() # Revert to full data if date range selection is invalid
+    st.sidebar.warning("Please select a complete date range.")
+    st.stop()
 
+
+# Agent Selection Filter (applied to the date-filtered data)
 available_agents = sorted(filtered_df['AgentID'].unique().tolist())
 selected_agents = st.sidebar.multiselect(
     "Select Agents (Optional)",
     options=available_agents,
-    default=available_agents # Select all by default
+    default=available_agents
 )
 
 if selected_agents:
     filtered_df = filtered_df[filtered_df['AgentID'].isin(selected_agents)].copy()
 else:
-    # If no agents selected, it implies "all agents" for the given date range.
-    # The warning from date_range handles the case where filters are incomplete.
     pass
+
+# --- Debug Filter Status ---
+with st.sidebar.expander("Debug Filter Status"):
+    st.write(f"Quick Filter: {quick_filter}")
+    st.write(f"Manual Date Input: {date_range}")
+    st.write(f"Filtered Date Range: {start_date_filter} to {end_date_filter}")
+    st.write(f"Selected Agents: {selected_agents if selected_agents else 'All Agents'}")
+    st.write(f"Original Data Shape (rows, cols): {df.shape}")
+    st.write(f"Filtered Data Shape (rows, cols): {filtered_df.shape}")
+    if not filtered_df.empty:
+        st.write(f"Unique Dates in Filtered Data: {filtered_df['Date'].nunique()}")
+        st.write(f"Unique Agents in Filtered Data: {filtered_df['AgentID'].nunique()}")
 
 
 # Check if filtered_df is empty after all selections
 if filtered_df.empty:
     st.error("No data available for the selected filters. Please adjust your selections.")
-    st.stop() # <<< CRITICAL FIX: Stop execution if no data
+    st.stop()
 
 # --- Data Processing and Calculations (as in notebook cells 3-6) ---
-
-# --- 1. Adherence Calculation ---
 @st.cache_data
 def calculate_adherence(data_frame):
-    # Ensure data_frame is not empty before proceeding
     if data_frame.empty:
         return pd.DataFrame(columns=['AgentID', 'Date', 'ScheduledShiftStart', 'ScheduledShiftEnd',
                                      'ActualLogin', 'ActualLogout', 'ScheduledDurationMinutes',
@@ -96,11 +122,10 @@ def calculate_adherence(data_frame):
 
     agent_daily_shifts['ScheduledDurationMinutes'] = (agent_daily_shifts['ScheduledShiftEnd'] - agent_daily_shifts['ScheduledShiftStart']).dt.total_seconds() / 60
     agent_daily_shifts['ActualDurationMinutes'] = (agent_daily_shifts['ActualLogout'] - agent_daily_shifts['ActualLogin']).dt.total_seconds() / 60
-    
-    # Handle division by zero for AdherencePercentage if ScheduledDurationMinutes is 0
+
     agent_daily_shifts['AdherencePercentage'] = np.where(
         agent_daily_shifts['ScheduledDurationMinutes'] == 0,
-        0, # Or np.nan, depending on how you want to represent it
+        0,
         (agent_daily_shifts['ActualDurationMinutes'] / agent_daily_shifts['ScheduledDurationMinutes']) * 100
     )
     agent_daily_shifts['AdherencePercentage'] = agent_daily_shifts['AdherencePercentage'].clip(upper=100)
@@ -108,10 +133,8 @@ def calculate_adherence(data_frame):
 
 agent_daily_shifts = calculate_adherence(filtered_df)
 
-# --- 2. Occupancy Calculation ---
 @st.cache_data
 def calculate_occupancy(data_frame, adherence_df):
-    # Ensure data_frame is not empty before proceeding
     if data_frame.empty or adherence_df.empty:
         return pd.DataFrame(columns=adherence_df.columns.tolist() + ['ProductiveTimeMinutes', 'OccupancyPercentage'])
 
@@ -123,10 +146,9 @@ def calculate_occupancy(data_frame, adherence_df):
     agent_performance = pd.merge(adherence_df, productive_time, on=['AgentID', 'Date'], how='left')
     agent_performance['ProductiveTimeMinutes'] = agent_performance['ProductiveTimeMinutes'].fillna(0)
 
-    # Handle division by zero for OccupancyPercentage if ActualDurationMinutes is 0
     agent_performance['OccupancyPercentage'] = np.where(
         agent_performance['ActualDurationMinutes'] == 0,
-        0, # Or np.nan
+        0,
         (agent_performance['ProductiveTimeMinutes'] / agent_performance['ActualDurationMinutes']) * 100
     )
     agent_performance['OccupancyPercentage'] = agent_performance['OccupancyPercentage'].replace([np.inf, -np.inf], np.nan).fillna(0)
@@ -135,15 +157,13 @@ def calculate_occupancy(data_frame, adherence_df):
 
 agent_performance = calculate_occupancy(filtered_df, agent_daily_shifts)
 
-# --- 3. Shrinkage Analysis ---
 @st.cache_data
 def calculate_shrinkage(data_frame, performance_df):
-    # Ensure data_frame is not empty before proceeding
     if data_frame.empty or performance_df.empty:
         return performance_df, []
 
     break_types = ['Lunch', 'Short Break', 'Personal Time', 'Team Meeting', 'System Issue']
-    shrinkage_types = [s for s in break_types if s not in ['Training', 'Meeting']] # Assuming Training/Meeting are NOT shrinkage for this context
+    shrinkage_types = [s for s in break_types if s not in ['Training', 'Meeting']]
 
     shrinkage_data = data_frame[data_frame['EventType'].isin(shrinkage_types)].groupby(['AgentID', 'Date', 'EventType'])['EventDurationMinutes'].sum().reset_index()
     shrinkage_pivot = shrinkage_data.pivot_table(index=['AgentID', 'Date'], columns='EventType', values='EventDurationMinutes', fill_value=0).reset_index()
@@ -151,28 +171,24 @@ def calculate_shrinkage(data_frame, performance_df):
 
     performance_df = pd.merge(performance_df, shrinkage_pivot, on=['AgentID', 'Date'], how='left').fillna(0)
 
-    # Ensure all shrinkage columns exist, even if no data for them
     for col in shrinkage_types:
         if col not in performance_df.columns:
             performance_df[col] = 0
 
     performance_df['TotalShrinkageMinutes'] = performance_df[shrinkage_types].sum(axis=1)
-    
-    # Handle division by zero for ShrinkagePercentage
+
     performance_df['ShrinkagePercentage'] = np.where(
         performance_df['ScheduledDurationMinutes'] == 0,
-        0, # Or np.nan
+        0,
         (performance_df['TotalShrinkageMinutes'] / performance_df['ScheduledDurationMinutes']) * 100
     )
     performance_df['ShrinkagePercentage'] = performance_df['ShrinkagePercentage'].replace([np.inf, -np.inf], np.nan).fillna(0)
-    return performance_df, shrinkage_types # Return shrinkage_types for later use
+    return performance_df, shrinkage_types
 
 agent_performance, shrinkage_types = calculate_shrinkage(filtered_df, agent_performance)
 
-# --- 4. Agent Efficiency and Outlier Detection ---
 @st.cache_data
 def calculate_agent_summary(performance_df):
-    # Ensure performance_df is not empty before proceeding
     if performance_df.empty:
         return pd.DataFrame(columns=['AgentID', 'AvgAdherence', 'AvgOccupancy', 'TotalProductiveTime',
                                      'TotalActualLoggedTime', 'EfficiencyScore', 'EfficiencyRank',
@@ -189,8 +205,7 @@ def calculate_agent_summary(performance_df):
     agent_summary = agent_summary.sort_values(by='EfficiencyScore', ascending=False)
     agent_summary['EfficiencyRank'] = agent_summary['EfficiencyScore'].rank(ascending=False)
 
-    # Outlier detection (only if there's enough data)
-    if len(agent_summary) > 1: # Need at least 2 data points for quartiles
+    if len(agent_summary) > 1:
         Q1_adherence = agent_summary['AvgAdherence'].quantile(0.25)
         Q3_adherence = agent_summary['AvgAdherence'].quantile(0.75)
         IQR_adherence = Q3_adherence - Q1_adherence
@@ -204,7 +219,7 @@ def calculate_agent_summary(performance_df):
                                            (agent_summary['AvgOccupancy'] > (Q3_occupancy + 1.5 * IQR_occupancy)))
 
         agent_summary['FlaggedOutlier'] = agent_summary['AdherenceOutlier'] | agent_summary['OccupancyOutlier']
-    else: # If not enough data for quartiles, no outliers can be determined
+    else:
         agent_summary['AdherenceOutlier'] = False
         agent_summary['OccupancyOutlier'] = False
         agent_summary['FlaggedOutlier'] = False
@@ -228,7 +243,6 @@ Use the filters on the sidebar to explore data for specific dates and agents.
 st.header("📈 Overall Team Performance")
 st.markdown("---")
 
-# Ensure agent_performance is not empty before calculating overall metrics
 if agent_performance.empty:
     st.info("No agent performance data available for the selected filters to calculate overall team metrics.")
     avg_adherence_val = 0.0
@@ -236,7 +250,6 @@ if agent_performance.empty:
     total_productive_time_hrs_val = 0.0
     total_logged_in_time_hrs_val = 0.0
 else:
-    # Calculate overall summary metrics
     avg_adherence_val = agent_performance['AdherencePercentage'].mean()
     avg_occupancy_val = agent_performance['OccupancyPercentage'].mean()
     total_productive_time_hrs_val = agent_performance['ProductiveTimeMinutes'].sum() / 60
@@ -253,7 +266,6 @@ with col3:
 with col4:
     st.metric(label="Total Logged-in Time", value=f"{total_logged_in_time_hrs_val:.2f} Hrs")
 
-# Table for Overall Team Performance Summary
 overall_team_summary = pd.DataFrame({
     'Metric': ['Average Adherence (%)', 'Average Occupancy (%)', 'Total Productive Time (Hrs)', 'Total Logged-in Time (Hrs)'],
     'Value': [avg_adherence_val, avg_occupancy_val, total_productive_time_hrs_val, total_logged_in_time_hrs_val]
@@ -270,7 +282,6 @@ st.header("📊 Performance Trend Analysis")
 st.markdown("---")
 
 if not agent_performance.empty:
-    # Daily Adherence Chart (from agent_performance)
     st.subheader("Daily Adherence Trends")
     team_daily_adherence = agent_performance.groupby('Date')['AdherencePercentage'].mean().reset_index()
     fig_daily_adherence = px.line(team_daily_adherence, x='Date', y='AdherencePercentage',
@@ -279,12 +290,13 @@ if not agent_performance.empty:
                                   template='plotly_white')
     st.plotly_chart(fig_daily_adherence, use_container_width=True)
 
-    # Weekly Adherence Chart
     st.subheader("Weekly Adherence Trends")
-    agent_performance['Week'] = pd.to_datetime(agent_performance['Date']).dt.isocalendar().week.astype(int)
-    agent_performance['Year'] = pd.to_datetime(agent_performance['Date']).dt.year
-    team_weekly_adherence = agent_performance.groupby(['Year', 'Week'])['AdherencePercentage'].mean().reset_index()
-    team_weekly_adherence['Week_Label'] = team_weekly_adherence['Year'].astype(str) + '-W' + team_weekly_adherence['Week'].astype(str)
+    temp_df_for_weekly = agent_performance.copy()
+    temp_df_for_weekly['Date_dt'] = pd.to_datetime(temp_df_for_weekly['Date'])
+    temp_df_for_weekly['Week'] = temp_df_for_weekly['Date_dt'].dt.isocalendar().week.astype(int)
+    temp_df_for_weekly['Year'] = temp_df_for_weekly['Date_dt'].dt.year
+    team_weekly_adherence = temp_df_for_weekly.groupby(['Year', 'Week'])['AdherencePercentage'].mean().reset_index()
+    team_weekly_adherence['Week_Label'] = team_weekly_adherence['Year'].astype(str) + '-W' + team_weekly_adherence['Week'].astype(str).str.zfill(2)
 
     fig_weekly_adherence = px.bar(team_weekly_adherence, x='Week_Label', y='AdherencePercentage',
                                   title='Team Average Weekly Adherence',
@@ -293,7 +305,6 @@ if not agent_performance.empty:
     st.plotly_chart(fig_weekly_adherence, use_container_width=True)
 
 
-    # Daily Occupancy Chart
     st.subheader("Daily Occupancy Trends")
     team_daily_occupancy = agent_performance.groupby('Date')['OccupancyPercentage'].mean().reset_index()
     fig_daily_occupancy = px.line(team_daily_occupancy, x='Date', y='OccupancyPercentage',
@@ -304,7 +315,6 @@ if not agent_performance.empty:
     st.plotly_chart(fig_daily_occupancy, use_container_width=True)
 
 
-    # Daily Shrinkage Percentage Chart
     st.subheader("Daily Shrinkage Percentage Trends")
     team_daily_shrinkage = agent_performance.groupby('Date')['ShrinkagePercentage'].mean().reset_index()
     fig_daily_shrinkage = px.line(team_daily_shrinkage, x='Date', y='ShrinkagePercentage',
@@ -355,7 +365,6 @@ if not agent_summary.empty:
     st.plotly_chart(fig_scatter, use_container_width=True)
 
 
-    # Top/Bottom Agents by Efficiency
     st.subheader("Top & Bottom Agents by Efficiency")
     col7, col8 = st.columns(2)
 
@@ -369,13 +378,10 @@ if not agent_summary.empty:
         bottom_5_agents = agent_summary.tail(5)[['AgentID', 'EfficiencyScore', 'AvgAdherence', 'AvgOccupancy']].round(2)
         st.dataframe(bottom_5_agents, hide_index=True)
 
-    # Chart: Agent Efficiency Ranking (Top N)
     st.subheader("Agent Efficiency Ranking")
-    # Let's visualize the top 15 and bottom 15 agents for better context
-    # Ensure there are enough agents to display 15 top/bottom
-    if len(agent_summary) > 30: # If more than 30 agents, show top/bottom 15
+    if len(agent_summary) > 30:
         top_bottom_agents_for_chart = pd.concat([agent_summary.head(15), agent_summary.tail(15)]).sort_values(by='EfficiencyScore', ascending=True)
-    else: # Otherwise, show all agents if less than or equal to 30
+    else:
         top_bottom_agents_for_chart = agent_summary.sort_values(by='EfficiencyScore', ascending=True)
 
     fig_efficiency_rank = px.bar(top_bottom_agents_for_chart, x='EfficiencyScore', y='AgentID', orientation='h',
@@ -383,7 +389,7 @@ if not agent_summary.empty:
                                  labels={'EfficiencyScore': 'Efficiency Score', 'AgentID': 'Agent ID'},
                                  template='plotly_white',
                                  color='EfficiencyScore', color_continuous_scale=px.colors.sequential.Greens)
-    fig_efficiency_rank.update_layout(yaxis={'categoryorder':'total ascending'}) # Ensures highest score is at top
+    fig_efficiency_rank.update_layout(yaxis={'categoryorder':'total ascending'})
     st.plotly_chart(fig_efficiency_rank, use_container_width=True)
 else:
     st.info("No agent-level data available for detailed insights with the current filters.")
@@ -394,32 +400,30 @@ st.markdown("---")
 st.header("🕰️ Shrinkage Analysis")
 st.markdown("---")
 
-if not filtered_df.empty and shrinkage_types: # Ensure there's data and shrinkage types are defined
-    # Total Shrinkage Breakdown (Both Table and Chart)
-    total_shrinkage_by_type = filtered_df[filtered_df['EventType'].isin(shrinkage_types)].groupby('EventType')['EventDurationMinutes'].sum().reset_index()
-    total_shrinkage_by_type.rename(columns={'EventDurationMinutes': 'TotalMinutes'}, inplace=True)
-    total_shrinkage_by_type['TotalHours'] = total_shrinkage_by_type['TotalMinutes'] / 60
-    total_shrinkage_by_type = total_shrinkage_by_type.sort_values(by='TotalMinutes', ascending=False).round(2)
+total_shrinkage_by_type_df = pd.DataFrame()
+if not filtered_df.empty and shrinkage_types:
+    total_shrinkage_by_type_df = filtered_df[filtered_df['EventType'].isin(shrinkage_types)].groupby('EventType')['EventDurationMinutes'].sum().reset_index()
+    total_shrinkage_by_type_df.rename(columns={'EventDurationMinutes': 'TotalMinutes'}, inplace=True)
+    total_shrinkage_by_type_df['TotalHours'] = total_shrinkage_by_type_df['TotalMinutes'] / 60
+    total_shrinkage_by_type_df = total_shrinkage_by_type_df.sort_values(by='TotalMinutes', ascending=False).round(2)
 
+if not total_shrinkage_by_type_df.empty:
     st.subheader("Total Shrinkage Breakdown by Category")
-    col9, col10 = st.columns([1, 2]) # Adjust column width for table vs chart
+    col9, col10 = st.columns([1, 2])
 
     with col9:
         st.markdown("##### Detailed Breakdown")
-        st.dataframe(total_shrinkage_by_type, hide_index=True)
+        st.dataframe(total_shrinkage_by_type_df, hide_index=True)
 
     with col10:
         st.markdown("##### Visual Overview")
-        if not total_shrinkage_by_type.empty:
-            fig_shrinkage_breakdown = px.bar(total_shrinkage_by_type, x='EventType', y='TotalHours',
-                                             title='Total Shrinkage Breakdown by Category',
-                                             labels={'EventType': 'Shrinkage Type', 'TotalHours': 'Total Hours'},
-                                             template='plotly_white',
-                                             color='TotalHours', color_continuous_scale=px.colors.sequential.Viridis)
-            fig_shrinkage_breakdown.update_layout(xaxis_title="Shrinkage Category", yaxis_title="Total Hours")
-            st.plotly_chart(fig_shrinkage_breakdown, use_container_width=True)
-        else:
-            st.info("No shrinkage data to display for the selected period.")
+        fig_shrinkage_breakdown = px.bar(total_shrinkage_by_type_df, x='EventType', y='TotalHours',
+                                         title='Total Shrinkage Breakdown by Category',
+                                         labels={'EventType': 'Shrinkage Type', 'TotalHours': 'Total Hours'},
+                                         template='plotly_white',
+                                         color='TotalHours', color_continuous_scale=px.colors.sequential.Viridis)
+        fig_shrinkage_breakdown.update_layout(xaxis_title="Shrinkage Category", yaxis_title="Total Hours")
+        st.plotly_chart(fig_shrinkage_breakdown, use_container_width=True)
 else:
     st.info("No shrinkage data available for analysis with the current filters.")
 
@@ -430,14 +434,12 @@ st.markdown("---")
 st.header("💡 Team-Level Recommendations")
 st.markdown("---")
 
-# Use the directly computed values
-avg_adherence = avg_adherence_val # FIXED: Using avg_adherence_val directly
-avg_occupancy = avg_occupancy_val # FIXED: Using avg_occupancy_val directly
+avg_adherence = avg_adherence_val
+avg_occupancy = avg_occupancy_val
 total_flagged_outliers = agent_summary['FlaggedOutlier'].sum()
 
-# Safely get top shrinkage type and hours from the freshly calculated total_shrinkage_by_type
-top_shrinkage_type = total_shrinkage_by_type.iloc[0]['EventType'] if not total_shrinkage_by_type.empty else "N/A"
-top_shrinkage_hours = total_shrinkage_by_type.iloc[0]['TotalHours'] if not total_shrinkage_by_type.empty else 0
+top_shrinkage_type = total_shrinkage_by_type_df.iloc[0]['EventType'] if not total_shrinkage_by_type_df.empty else "N/A"
+top_shrinkage_hours = total_shrinkage_by_type_df.iloc[0]['TotalHours'] if not total_shrinkage_by_type_df.empty else 0
 
 st.markdown(f"Based on the analysis of contact center compliance data for the selected period:")
 
@@ -446,20 +448,20 @@ st.markdown(f"- The team's **average adherence** is **{avg_adherence:.2f}%**, in
 st.markdown(f"- The **average occupancy** is **{avg_occupancy:.2f}%**, reflecting the proportion of logged-in time spent on productive tasks.")
 
 st.markdown("#### 2. Adherence and Occupancy Insights")
-if avg_adherence < 90: # Example threshold
+if avg_adherence < 90:
     st.warning(f"**Adherence Focus Needed:** The average adherence is **below 90%**. Investigate reasons for discrepancies between scheduled and actual login/logout times. This could be due to system issues, late starts, early finishes, or unrecorded breaks. Review login/logout procedures and provide refresher training if needed.")
 else:
     st.success(f"**Adherence Strength:** Adherence is strong at {avg_adherence:.2f}%. Continue to monitor to ensure consistency.")
 
-if avg_occupancy < 70: # Example threshold
+if avg_occupancy < 70:
     st.warning(f"**Occupancy Improvement:** The average occupancy is **below 70%**. This suggests there might be significant idle time or time spent on non-productive activities while logged in. Analyze detailed agent activity logs for patterns in non-productive time. Optimize workflow, reduce unnecessary tasks, or re-evaluate staffing levels.")
-elif avg_occupancy > 85: # Example for potential burnout risk
+elif avg_occupancy > 85:
     st.info(f"**High Occupancy Alert:** Occupancy is quite high at {avg_occupancy:.2f}%, which could indicate potential for agent burnout or insufficient break times. Ensure agents are taking their scheduled breaks and have adequate time for after-call work. Consider staffing adjustments if consistently high.")
 else:
     st.success(f"**Occupancy Stability:** Occupancy is within a healthy range ({avg_occupancy:.2f}%). Continue to balance productivity with agent well-being.")
 
 st.markdown("#### 3. Shrinkage Patterns")
-if top_shrinkage_hours > 0:
+if top_shrinkage_hours > 0 and top_shrinkage_type != "N/A":
     st.info(f"The most significant shrinkage category identified is **'{top_shrinkage_type}'**, accounting for **{top_shrinkage_hours:.2f} hours** during the period. Analyze the root causes for high shrinkage in this category. For example, if 'Personal Time' is high, review policies or provide clearer guidelines. If 'System Issue' is high, escalate to IT for resolution.")
 else:
     st.success("No significant shrinkage patterns were identified, which is positive.")
