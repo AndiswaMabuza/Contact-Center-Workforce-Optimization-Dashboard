@@ -2,7 +2,7 @@
 
 ## Created By
 Andiswa Mabuza
-LinkedIn: linkedin.com/in/andiswamabuza
+LinkedIn: [https://linkedin.com/in/andiswamabuza]
 email: amabuza53@gmail.com
 
 ## Overview
