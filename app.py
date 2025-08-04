@@ -35,7 +35,7 @@ st.sidebar.header("Filter Data")
 min_date = df['Date'].min()
 max_date = df['Date'].max()
 
-# --- NEW: Quick Date Filter Selectbox ---
+# --- Quick Date Filter Selectbox ---
 quick_filter_options = ["All Time", "Last 7 Days", "Last 30 Days", "Last 90 Days"]
 quick_filter = st.sidebar.selectbox("Quick Filter", options=quick_filter_options)
 
@@ -53,25 +53,17 @@ else: # "All Time"
     start_date_for_picker = min_date
     end_date_for_picker = max_date
 
-# --- Manual Date Range Override ---
-date_range = st.sidebar.date_input(
-    "Custom Date Range",
-    value=(start_date_for_picker, end_date_for_picker), # Default to the quick filter's range
-    min_value=min_date,
-    max_value=max_date
-)
-
-# Initialize filtered_df here with a default
+# Initialize filtered_df with a default
 filtered_df = df.copy()
 
 # Apply the date filter based on the manual date picker
-if len(date_range) == 2:
-    start_date_filter = date_range[0]
-    end_date_filter = date_range[1]
-    filtered_df = filtered_df[(filtered_df['Date'] >= start_date_filter) & (filtered_df['Date'] <= end_date_filter)].copy()
-else:
-    st.sidebar.warning("Please select a complete date range.")
-    st.stop()
+#if len(date_range) == 2:
+   # start_date_filter = date_range[0]
+   # end_date_filter = date_range[1]
+   # filtered_df = filtered_df[(filtered_df['Date'] >= start_date_filter) & (filtered_df['Date'] <= end_date_filter)].copy()
+#else:
+   # st.sidebar.warning("Please select a complete date range.")
+   # st.stop()
 
 
 # Agent Selection Filter (applied to the date-filtered data)
@@ -86,18 +78,6 @@ if selected_agents:
     filtered_df = filtered_df[filtered_df['AgentID'].isin(selected_agents)].copy()
 else:
     pass
-
-# --- Debug Filter Status ---
-with st.sidebar.expander("Debug Filter Status"):
-    st.write(f"Quick Filter: {quick_filter}")
-    st.write(f"Manual Date Input: {date_range}")
-    st.write(f"Filtered Date Range: {start_date_filter} to {end_date_filter}")
-    st.write(f"Selected Agents: {selected_agents if selected_agents else 'All Agents'}")
-    st.write(f"Original Data Shape (rows, cols): {df.shape}")
-    st.write(f"Filtered Data Shape (rows, cols): {filtered_df.shape}")
-    if not filtered_df.empty:
-        st.write(f"Unique Dates in Filtered Data: {filtered_df['Date'].nunique()}")
-        st.write(f"Unique Agents in Filtered Data: {filtered_df['AgentID'].nunique()}")
 
 
 # Check if filtered_df is empty after all selections
