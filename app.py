@@ -27,7 +27,7 @@ def load_data(file_path):
     df['EventEndTime'] = pd.to_datetime(df['EventEndTime'])
     return df
 
-df = load_data('agent_performance_data.csv')
+df = load_data('agent_performance_data.csv.gz')
 
 # --- Sidebar Filters ---
 st.sidebar.header("Filter Data")
@@ -69,18 +69,6 @@ if selected_agents:
     filtered_df = filtered_df[filtered_df['AgentID'].isin(selected_agents)].copy()
 else:
     pass
-
-# --- Debug Filter Status ---
-with st.sidebar.expander("Debug Filter Status"):
-    st.write(f"Active Filter: {quick_filter}")
-    st.write(f"Filtered Date Range: {start_date_filter} to {end_date_filter}")
-    st.write(f"Selected Agents: {selected_agents if selected_agents else 'All Agents'}")
-    st.write(f"Original Data Shape (rows, cols): {df.shape}")
-    st.write(f"Filtered Data Shape (rows, cols): {filtered_df.shape}")
-    if not filtered_df.empty:
-        st.write(f"Unique Dates in Filtered Data: {filtered_df['Date'].nunique()}")
-        st.write(f"Unique Agents in Filtered Data: {filtered_df['AgentID'].nunique()}")
-
 
 # Check if filtered_df is empty after all selections
 if filtered_df.empty:
