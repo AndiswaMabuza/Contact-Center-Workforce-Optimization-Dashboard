@@ -56,14 +56,14 @@ else: # "All Time"
 # Initialize filtered_df with a default
 filtered_df = df.copy()
 
-# Apply the date filter based on the manual date picker
-#if len(date_range) == 2:
-   # start_date_filter = date_range[0]
-   # end_date_filter = date_range[1]
-   # filtered_df = filtered_df[(filtered_df['Date'] >= start_date_filter) & (filtered_df['Date'] <= end_date_filter)].copy()
-#else:
-   # st.sidebar.warning("Please select a complete date range.")
-   # st.stop()
+# Apply the date filter based on date filter
+if len(date_range) == 2:
+    start_date_filter = date_range[0]
+    end_date_filter = date_range[1]
+    filtered_df = filtered_df[(filtered_df['Date'] >= start_date_filter) & (filtered_df['Date'] <= end_date_filter)].copy()
+else:
+    st.sidebar.warning("Please select a complete date range.")
+    st.stop()
 
 
 # Agent Selection Filter (applied to the date-filtered data)
