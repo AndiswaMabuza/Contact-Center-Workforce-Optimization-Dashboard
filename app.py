@@ -27,7 +27,7 @@ def load_data(file_path):
     df['EventEndTime'] = pd.to_datetime(df['EventEndTime'])
     return df
 
-df = load_data('agent_performance_data.csv')
+df = load_data('agent_performance_data.csv.gz')
 
 # --- Sidebar Filters ---
 st.sidebar.header("Filter Data")
